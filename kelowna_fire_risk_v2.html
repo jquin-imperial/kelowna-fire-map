@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelowna Forest Fire Risk Monitor</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+  :root {
+    --bg: #1a1a12;
+    --panel: #22221a;
+    --border: #3a3a28;
+    --text: #d4cfa8;
+    --muted: #7a7a5a;
+    --accent: #c8a84b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: #14140e;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 1rem;
+    font-weight: normal;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  header span {
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #map {
+    flex: 1;
+    background: #1a1a14;
+  }
+
+  /* Dark map tiles overlay */
+  .leaflet-tile {
+    filter: brightness(0.55) saturate(0.4) sepia(0.3);
+  }
+
+  /* PANEL */
+  .panel {
+    width: 280px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-section h2 {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .selected-name {
+    font-size: 0.95rem;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    min-height: 1.2em;
+  }
+
+  .selected-type {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  .input-row { margin-bottom: 12px; }
+
+  .input-row label {
+    display: block;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .input-row input {
+    width: 100%;
+    background: #14140e;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-row input:focus { border-color: var(--accent); }
+  .input-row input::placeholder { color: var(--muted); font-size: 0.8rem; }
+  .unit { font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
+
+  #submitBtn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 9px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  #submitBtn:hover:not(:disabled) { background: var(--accent); color: #14140e; }
+  #submitBtn:disabled { border-color: var(--border); color: var(--muted); cursor: not-allowed; }
+
+  .risk-display { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+
+  .risk-swatch {
+    width: 28px; height: 28px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+    transition: background 0.4s;
+    background: #2a3a2a;
+  }
+
+  .risk-label { font-size: 0.95rem; letter-spacing: 0.05em; }
+  .risk-score { font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+
+  .legend-row {
+    display: flex; align-items: center;
+    gap: 8px; margin-bottom: 7px;
+    font-size: 0.68rem; letter-spacing: 0.05em;
+  }
+
+  .legend-swatch {
+    width: 16px; height: 16px; flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .region-item {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(58,58,40,0.4);
+    cursor: pointer;
+    font-size: 0.7rem;
+    transition: color 0.15s;
+  }
+
+  .region-item:hover { color: var(--accent); }
+  .region-item-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .region-item-name { flex: 1; padding: 0 7px; }
+  .region-item-risk { font-size: 0.62rem; color: var(--muted); }
+
+  .no-sel { color: var(--muted); font-size: 0.72rem; font-style: italic; }
+
+  /* Leaflet popup override */
+  .leaflet-popup-content-wrapper {
+    background: #22221a;
+    border: 1px solid #3a3a28;
+    border-radius: 0;
+    color: #d4cfa8;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+  }
+
+  .leaflet-popup-tip { background: #22221a; }
+
+  footer {
+    padding: 8px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.07em;
+    background: #14140e;
+    display: flex;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  /* Instructions */
+  .instructions {
+    font-size: 0.65rem;
+    color: var(--muted);
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Kelowna Forest Fire Risk</h1>
+  <span>// Click a region on the map to log sensor data</span>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+
+  <div class="panel">
+
+    <div class="panel-section">
+      <h2>Selected Region</h2>
+      <div class="selected-name" id="selectedName"><span class="no-sel">— click a region —</span></div>
+      <div class="selected-type" id="selectedType"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2>Log Sensor Data</h2>
+      <div class="input-row">
+        <label>Temperature</label>
+        <input type="number" id="inputTemp" placeholder="e.g. 34" min="-20" max="60" step="0.1"/>
+        <div class="unit">°C</div>
+      </div>
+      <div class="input-row">
+        <label>Relative Humidity</label>
+        <input type="number" id="inputHum" placeholder="e.g. 18" min="0" max="100" step="0.1"/>
+        <div class="unit">% RH</div>
+      </div>
+      <button id="submitBtn" disabled onclick="submitData()">▶ Submit Reading</button>
+    </div>
+
+    <div class="panel-section">
+      <h2>Risk Assessment</h2>
+      <div class="risk-display">
+        <div class="risk-swatch" id="riskSwatch"></div>
+        <div>
+          <div class="risk-label" id="riskLabel">—</div>
+          <div class="risk-score" id="riskScore"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1">
+      <h2>Regions</h2>
+      <div id="regionList"></div>
+    </div>
+
+    <div class="panel-section">
+      <h2>Risk Legend</h2>
+      <div class="legend-row"><div class="legend-swatch" style="background:#2a3a2a;opacity:0.85"></div>No data</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#2d7a1b"></div>Low (&lt;25)</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#9a8a10"></div>Moderate (25–49)</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#b05010"></div>High (50–74)</div>
+      <div class="legend-row"><div class="legend-swatch" style="background:#c01808"></div>Extreme (75+)</div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <span>Kelowna, BC — Forest Fire Risk Monitor</span>
+  <span id="footerTime"></span>
+</footer>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ─── REGION DEFINITIONS ───────────────────────────────────────────────
+// GPS-accurate polygons for Kelowna area forests & parks
+// Coordinates are [lat, lng]
+
+const REGIONS = {
+  'okanagan-mtn': {
+    name: 'Okanagan Mountain',
+    type: 'Provincial Park',
+    coords: [
+      [49.780, -119.580],
+      [49.795, -119.520],
+      [49.810, -119.490],
+      [49.820, -119.470],
+      [49.800, -119.440],
+      [49.770, -119.440],
+      [49.740, -119.460],
+      [49.720, -119.500],
+      [49.710, -119.540],
+      [49.720, -119.580],
+      [49.745, -119.590],
+      [49.760, -119.595],
+    ]
+  },
+  'myra-bellevue': {
+    name: 'Myra-Bellevue',
+    type: 'Provincial Park',
+    coords: [
+      [49.840, -119.420],
+      [49.870, -119.370],
+      [49.890, -119.340],
+      [49.900, -119.300],
+      [49.880, -119.270],
+      [49.850, -119.280],
+      [49.820, -119.310],
+      [49.800, -119.360],
+      [49.800, -119.410],
+      [49.820, -119.430],
+    ]
+  },
+  'bald-range': {
+    name: 'Bald Range',
+    type: 'Crown Land',
+    coords: [
+      [49.940, -119.390],
+      [49.970, -119.330],
+      [49.990, -119.280],
+      [49.980, -119.230],
+      [49.950, -119.220],
+      [49.920, -119.250],
+      [49.900, -119.300],
+      [49.900, -119.360],
+      [49.920, -119.390],
+    ]
+  },
+  'knox': {
+    name: 'Knox Mountain',
+    type: 'City Park / Urban Interface',
+    coords: [
+      [49.910, -119.490],
+      [49.920, -119.460],
+      [49.915, -119.440],
+      [49.900, -119.430],
+      [49.885, -119.440],
+      [49.880, -119.465],
+      [49.890, -119.490],
+      [49.900, -119.500],
+    ]
+  },
+  'community': {
+    name: 'Community Forest',
+    type: 'Kelowna Community Forest',
+    coords: [
+      [49.920, -119.540],
+      [49.940, -119.510],
+      [49.935, -119.480],
+      [49.915, -119.460],
+      [49.895, -119.470],
+      [49.880, -119.500],
+      [49.885, -119.530],
+      [49.900, -119.550],
+    ]
+  },
+  'kettle': {
+    name: 'Kettle Valley',
+    type: 'Interface Zone',
+    coords: [
+      [49.830, -119.500],
+      [49.850, -119.460],
+      [49.840, -119.420],
+      [49.820, -119.420],
+      [49.800, -119.440],
+      [49.800, -119.480],
+      [49.810, -119.510],
+    ]
+  },
+  'joe-rich': {
+    name: 'Joe Rich',
+    type: 'Rural East / Crown Land',
+    coords: [
+      [49.860, -119.280],
+      [49.880, -119.230],
+      [49.870, -119.180],
+      [49.840, -119.160],
+      [49.810, -119.180],
+      [49.800, -119.230],
+      [49.820, -119.270],
+      [49.840, -119.280],
+    ]
+  },
+  'westside': {
+    name: 'West Kelowna',
+    type: 'Westside Slopes / Crown Land',
+    coords: [
+      [49.900, -119.620],
+      [49.920, -119.590],
+      [49.910, -119.560],
+      [49.880, -119.550],
+      [49.850, -119.560],
+      [49.830, -119.590],
+      [49.840, -119.620],
+      [49.860, -119.640],
+      [49.880, -119.640],
+    ]
+  },
+};
+
+const RISK_LEVELS = [
+  { label: 'No Data',  color: '#2a3a2a', fillOpacity: 0.25 },
+  { label: 'Low',      color: '#2d7a1b', fillOpacity: 0.55 },
+  { label: 'Moderate', color: '#9a8a10', fillOpacity: 0.60 },
+  { label: 'High',     color: '#b05010', fillOpacity: 0.65 },
+  { label: 'Extreme',  color: '#c01808', fillOpacity: 0.70 },
+];
+
+// ─── STATE ────────────────────────────────────────────────────────────
+const regionData = {};
+let selectedId = null;
+const polygonLayers = {};
+
+// ─── MAP INIT ─────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [49.870, -119.490],
+  zoom: 11,
+  zoomControl: true,
+});
+
+// OpenStreetMap tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+// ─── DRAW REGIONS ─────────────────────────────────────────────────────
+function styleForRegion(id) {
+  const data = regionData[id];
+  const riskIdx = data ? getRiskLevel(data.score) : 0;
+  const r = RISK_LEVELS[riskIdx];
+  return {
+    color: selected => selected ? '#ffffff' : '#8aaa60',
+    weight: 1.5,
+    fillColor: r.color,
+    fillOpacity: r.fillOpacity,
+    dashArray: null,
+  };
+}
+
+Object.entries(REGIONS).forEach(([id, region]) => {
+  const poly = L.polygon(region.coords, {
+    color: '#8aaa60',
+    weight: 1.5,
+    fillColor: RISK_LEVELS[0].color,
+    fillOpacity: RISK_LEVELS[0].fillOpacity,
+  });
+
+  poly.bindTooltip(`<strong>${region.name}</strong><br><span style="color:#7a7a5a;font-size:0.7rem">${region.type}</span>`, {
+    sticky: true,
+    className: '',
+  });
+
+  poly.on('click', () => selectRegion(id));
+  poly.addTo(map);
+  polygonLayers[id] = poly;
+});
+
+// ─── LOGIC ────────────────────────────────────────────────────────────
+function calcRiskScore(temp, humidity) {
+  const tempScore = Math.min(100, Math.max(0, (temp + 10) / 55 * 100));
+  const humScore  = Math.min(100, Math.max(0, 100 - humidity));
+  return Math.round(tempScore * 0.45 + humScore * 0.55);
+}
+
+function getRiskLevel(score) {
+  if (score < 25) return 1;
+  if (score < 50) return 2;
+  if (score < 75) return 3;
+  return 4;
+}
+
+function selectRegion(id) {
+  // Reset previous selection style
+  if (selectedId && polygonLayers[selectedId]) {
+    polygonLayers[selectedId].setStyle({ weight: 1.5, dashArray: null, color: '#8aaa60' });
+  }
+
+  selectedId = id;
+  const region = REGIONS[id];
+
+  // Highlight selected
+  polygonLayers[id].setStyle({ weight: 3, color: '#ffffff', dashArray: '6 4' });
+  polygonLayers[id].bringToFront();
+
+  document.getElementById('selectedName').textContent = region.name;
+  document.getElementById('selectedType').textContent = region.type;
+  document.getElementById('submitBtn').disabled = false;
+
+  const data = regionData[id];
+  if (data) {
+    document.getElementById('inputTemp').value = data.temp;
+    document.getElementById('inputHum').value = data.humidity;
+    updateRiskDisplay(data.score);
+  } else {
+    document.getElementById('inputTemp').value = '';
+    document.getElementById('inputHum').value = '';
+    updateRiskDisplay(-1);
+  }
+
+  updateRegionList();
+}
+
+function updateRiskDisplay(score) {
+  const idx = score < 0 ? 0 : getRiskLevel(score);
+  const risk = RISK_LEVELS[idx];
+  document.getElementById('riskSwatch').style.background = risk.color;
+  document.getElementById('riskLabel').textContent = risk.label;
+  document.getElementById('riskScore').textContent = score >= 0 ? `Risk index: ${score} / 100` : '';
+}
+
+function submitData() {
+  if (!selectedId) return;
+  const temp = parseFloat(document.getElementById('inputTemp').value);
+  const hum  = parseFloat(document.getElementById('inputHum').value);
+
+  if (isNaN(temp) || isNaN(hum)) {
+    alert('Enter both temperature and humidity values.');
+    return;
+  }
+  if (hum < 0 || hum > 100) {
+    alert('Humidity must be 0–100%.');
+    return;
+  }
+
+  const score = calcRiskScore(temp, hum);
+  const riskIdx = getRiskLevel(score);
+  regionData[selectedId] = { temp, humidity: hum, score, riskIdx };
+
+  // Update polygon fill
+  const r = RISK_LEVELS[riskIdx];
+  polygonLayers[selectedId].setStyle({ fillColor: r.color, fillOpacity: r.fillOpacity });
+
+  updateRiskDisplay(score);
+  updateRegionList();
+}
+
+function updateRegionList() {
+  const list = document.getElementById('regionList');
+  list.innerHTML = '';
+  Object.entries(REGIONS).forEach(([id, region]) => {
+    const data = regionData[id];
+    const riskIdx = data ? getRiskLevel(data.score) : 0;
+    const risk = RISK_LEVELS[riskIdx];
+
+    const row = document.createElement('div');
+    row.className = 'region-item';
+    if (id === selectedId) row.style.color = 'var(--accent)';
+    row.onclick = () => {
+      selectRegion(id);
+      map.fitBounds(polygonLayers[id].getBounds(), { padding: [40, 40] });
+    };
+
+    row.innerHTML = `
+      <div class="region-item-dot" style="background:${risk.color}"></div>
+      <div class="region-item-name">${region.name}</div>
+      <div class="region-item-risk">${data ? risk.label : '—'}</div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function updateFooterTime() {
+  const now = new Date();
+  document.getElementById('footerTime').textContent =
+    now.toLocaleDateString('en-CA') + ' ' +
+    now.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────
+updateRegionList();
+updateFooterTime();
+setInterval(updateFooterTime, 30000);
+</script>
+</body>
+</html>
